@@ -167,7 +167,7 @@
             <div class="tab-pane" id="access" style="margin-top: 20px">
                 <ul class="nav nav-tabs ">
                     <li class="active"><a href="#vnc_console" data-toggle="tab">{% trans "VNC Console" %}</a></li>
-                    (% if telnet_port %}
+                    {% if telnet_port %}
                         <li><a href="#telnet_console" data-toggle="tab">{% trans "Telnet" %}</a></li>
                     {% endif %}
                     <li><a href="#vnc_pass" data-toggle="tab">{% trans "VNC Password" %}</a></li>
