@@ -1,6 +1,5 @@
 from string import letters, digits
 from random import choice
-from bisect import insort
 
 from django.shortcuts import render_to_response
 from django.http import HttpResponseRedirect, HttpResponse
@@ -95,6 +94,13 @@ def instusage(request, host_id, vname):
             datasets['cpu'].append(int(cpu_usage['cpu']))
             del datasets['cpu'][0]
 
+        # Some fix division by 0 Chart.js
+        if len(datasets['cpu']) == 10:
+            if sum(datasets['cpu']) == 0:
+                datasets['cpu'][9] += 0.1
+            if sum(datasets['cpu']) / 10 == datasets['cpu'][0]:
+                datasets['cpu'][9] += 0.1
+
         cpu = {
             'labels': [""] * 10,
             'datasets': [
@@ -143,6 +149,13 @@ def instusage(request, host_id, vname):
                 if len(datasets_wr) == 10:
                     datasets_wr.append(int(blk['wr']) / 1048576)
                     del datasets_wr[0]
+
+                # Some fix division by 0 Chart.js
+                if len(datasets_rd) == 10:
+                    if sum(datasets_rd) == 0:
+                        datasets_rd[9] += 0.01
+                    if sum(datasets_rd) / 10 == datasets_rd[0]:
+                        datasets_rd[9] += 0.01
 
                 disk = {
                     'labels': [""] * 10,
@@ -202,6 +215,13 @@ def instusage(request, host_id, vname):
                 if len(datasets_tx) == 10:
                     datasets_tx.append(int(net['tx']) / 1048576)
                     del datasets_tx[0]
+
+                # Some fix division by 0 Chart.js
+                if len(datasets_rx) == 10:
+                    if sum(datasets_rx) == 0:
+                        datasets_rx[9] += 0.01
+                    if sum(datasets_rx) / 10 == datasets_rx[0]:
+                        datasets_rx[9] += 0.01
 
                 network = {
                     'labels': [""] * 10,
@@ -424,8 +444,7 @@ def instance(request, host_id, vname):
                 image = name + "-clone" + "." + suffix
             else:
                 image = disk['image'] + "-clone"
-            clone_disk.append(
-                {'dev': disk['dev'], 'storage': disk['storage'], 'image': image, 'format': disk['format']})
+            clone_disk.append({'dev': disk['dev'], 'storage': disk['storage'], 'image': image})
         return clone_disk
 
     errors = []
@@ -456,21 +475,16 @@ def instance(request, host_id, vname):
         networks = conn.get_net_device()
         media_iso = sorted(conn.get_iso_media())
         vcpu_range = conn.get_max_cpus()
-        memory_range = [256, 512, 768, 1024, 2048, 4096, 6144, 8192, 16384]
-        if not memory in memory_range:
-            insort(memory_range, memory)
-        if not cur_memory in memory_range:
-            insort(memory_range, cur_memory)
+        memory_range = [256, 512, 1024, 2048, 4096, 6144, 8192, 16384]
         memory_host = conn.get_max_memory()
         vcpu_host = len(vcpu_range)
         telnet_port = conn.get_telnet_port()
-        vnc_port = conn.get_vnc_port()
-        vnc_keymap = conn.get_vnc_keymap()
+        vnc_port = conn.get_vnc()
+        vnc_keymap = conn.get_vnc_keymap
         snapshots = sorted(conn.get_snapshot(), reverse=True)
         inst_xml = conn._XMLDesc(VIR_DOMAIN_XML_SECURE)
         has_managed_save_image = conn.get_managed_save_image()
         clone_disks = show_clone_disk(disks)
-        vnc_passwd = conn.get_vnc_passwd()
     except libvirtError as err:
         errors.append(err)
 
@@ -487,7 +501,7 @@ def instance(request, host_id, vname):
         if request.method == 'POST':
             if 'start' in request.POST:
                 conn.start()
-                return HttpResponseRedirect(request.get_full_path() + '#shutdown')
+                return HttpResponseRedirect(request.get_full_path())
             if 'power' in request.POST:
                 if 'shutdown' == request.POST.get('power', ''):
                     conn.shutdown()
@@ -510,11 +524,11 @@ def instance(request, host_id, vname):
             if 'delete' in request.POST:
                 if conn.get_status() == 1:
                     conn.force_shutdown()
+                if request.POST.get('delete_disk', ''):
+                    conn.delete_disk()
                 try:
                     instance = Instance.objects.get(compute_id=host_id, name=vname)
                     instance.delete()
-                    if request.POST.get('delete_disk', ''):
-                        conn.delete_disk()
                 finally:
                     conn.delete()
                 return HttpResponseRedirect('/instances/%s/' % host_id)
@@ -543,13 +557,7 @@ def instance(request, host_id, vname):
                 vcpu = request.POST.get('vcpu', '')
                 cur_vcpu = request.POST.get('cur_vcpu', '')
                 memory = request.POST.get('memory', '')
-                memory_custom = request.POST.get('memory_custom', '')
-                if memory_custom:
-                    memory = memory_custom
                 cur_memory = request.POST.get('cur_memory', '')
-                cur_memory_custom = request.POST.get('cur_memory_custom', '')
-                if cur_memory_custom:
-                    cur_memory = cur_memory_custom
                 conn.change_settings(description, cur_memory, memory, cur_vcpu, vcpu)
                 return HttpResponseRedirect(request.get_full_path() + '#instancesettings')
             if 'change_xml' in request.POST:
@@ -563,8 +571,6 @@ def instance(request, host_id, vname):
                 else:
                     passwd = request.POST.get('vnc_passwd', '')
                     clear = request.POST.get('clear_pass', False)
-                    if clear:
-                        passwd = ''
                     if not passwd and not clear:
                         msg = _("Enter the VNC password or select Generate")
                         errors.append(msg)
@@ -584,14 +590,13 @@ def instance(request, host_id, vname):
             if 'migrate' in request.POST:
                 compute_id = request.POST.get('compute_id', '')
                 live = request.POST.get('live_migrate', False)
-                unsafe = request.POST.get('unsafe_migrate', False)
                 xml_del = request.POST.get('xml_delete', False)
                 new_compute = Compute.objects.get(id=compute_id)
                 conn_migrate = wvmInstances(new_compute.hostname,
                                             new_compute.login,
                                             new_compute.password,
                                             new_compute.type)
-                conn_migrate.moveto(conn, vname, live, unsafe, xml_del)
+                conn_migrate.moveto(conn, vname, live, xml_del)
                 conn_migrate.define_move(vname)
                 conn_migrate.close()
                 return HttpResponseRedirect('/instance/%s/%s' % (compute_id, vname))
@@ -610,7 +615,7 @@ def instance(request, host_id, vname):
                 clone_data['name'] = request.POST.get('name', '')
 
                 for post in request.POST:
-                    if 'disk' or 'meta' in post:
+                    if 'disk' in post:
                         clone_data[post] = request.POST.get(post, '')
 
                 conn.clone_instance(clone_data)
