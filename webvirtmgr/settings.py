@@ -147,26 +147,6 @@ TIME_JS_REFRESH = 2000
 WS_PORT = 6080
 WS_HOST = '0.0.0.0'
 
-# keepalive interval and count for libvirt connections
-# 
-# from: http://libvirt.org/html/libvirt-libvirt.html#virConnectSetKeepAlive
-# 
-# Start sending keepalive messages after @interval seconds of inactivity and
-# consider the connection to be broken when no response is received after
-# @count keepalive messages sent in a row. In other words, sending count + 1
-# keepalive message results in closing the connection. When @interval is <= 0,
-# no keepalive messages will be sent. When @count is 0, the connection will be
-# automatically closed after @interval seconds of inactivity without sending 
-# any keepalive messages.
-# 
-# Keep in mind that by default (at least on ubuntu variants) the libvirt.d is
-# configured to send keepalive messages by default (interval: 5, count: 5).
-# If the libvirt.d keeps on sending keepalive messages form the server-side
-# we will never close the connection no matter what these parameters are set 
-# to, as long as the libvirt.d is up and running at the server side.
-LIBVIRT_KEEPALIVE_INTERVAL = 5
-LIBVIRT_KEEPALIVE_COUNT    = 5
-
 try:
     from local.local_settings import *  # noqa
 except ImportError:
@@ -181,9 +161,8 @@ if not SECRET_KEY:
                                   'local')
 
     from webvirtmgr.utils import secret_key
-
     SECRET_KEY = secret_key.generate_or_read_from_file(os.path.join(LOCAL_PATH,
-                                                                    '.secret_key_store'))
+                                                       '.secret_key_store'))
 
 # list taken from http://qemu.weilnetz.de/qemu-doc.html#sec_005finvocation
 QEMU_KEYMAPS = ['ar', 'da', 'de', 'de-ch', 'en-gb', 'en-us', 'es', 'et', 'fi',

@@ -30,17 +30,15 @@ def console(request):
                            instance.compute.password,
                            instance.compute.type,
                            instance.name)
-        vnc_websocket_port = conn.get_vnc_websocket_port()
         vnc_passwd = conn.get_vnc_passwd()
     except:
-        vnc_websocket_port = None
         vnc_passwd = None
 
-    ws_port = vnc_websocket_port if vnc_websocket_port else WS_PORT
-    ws_host = request.get_host()
+    wsproxy_port = WS_PORT
+    wsproxy_host = request.get_host()
 
-    if ':' in ws_host:
-        ws_host = re.sub(':[0-9]+', '', ws_host)
+    if ':' in wsproxy_host:
+        wsproxy_host = re.sub(':[0-9]+', '', wsproxy_host)
 
     response = render_to_response('console.html', locals(), context_instance=RequestContext(request))
     response.set_cookie('token', token)
